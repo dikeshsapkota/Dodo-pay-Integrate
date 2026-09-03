@@ -1,6 +1,8 @@
 import json
 
 from django.conf import settings
+from django.core.management import call_command
+from django.db import OperationalError, ProgrammingError
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
@@ -13,14 +15,26 @@ from .models import Order, Product
 from .serializers import CheckoutSerializer, OrderSerializer, ProductSerializer
 
 
+def ensure_demo_database():
+    if not settings.DATABASES["default"]["NAME"]:
+        return
+    try:
+        Product.objects.exists()
+    except (OperationalError, ProgrammingError):
+        call_command("migrate", interactive=False, verbosity=0)
+        call_command("seed_demo", verbosity=0)
+
+
 @api_view(["GET"])
 def product_list(request):
+    ensure_demo_database()
     products = Product.objects.filter(is_active=True).order_by("id")
     return Response(ProductSerializer(products, many=True).data)
 
 
 @api_view(["POST"])
 def create_checkout(request):
+    ensure_demo_database()
     serializer = CheckoutSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
@@ -65,6 +79,7 @@ def create_checkout(request):
 
 @api_view(["GET"])
 def order_detail(request, order_id):
+    ensure_demo_database()
     try:
         order = Order.objects.select_related("product").get(id=order_id)
     except Order.DoesNotExist:
@@ -75,6 +90,7 @@ def order_detail(request, order_id):
 @csrf_exempt
 @api_view(["POST"])
 def dodo_webhook(request):
+    ensure_demo_database()
     raw_body = request.body
     headers = {
         "webhook-id": request.headers.get("webhook-id", ""),

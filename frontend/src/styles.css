@@ -1,0 +1,209 @@
+:root {
+  color: #17201b;
+  background: #f5f7f2;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(320px, 520px) minmax(280px, 420px);
+  gap: 28px;
+  align-items: start;
+  justify-content: center;
+  padding: 56px 20px;
+}
+
+.panel,
+.status {
+  background: #ffffff;
+  border: 1px solid #dce2d5;
+  border-radius: 8px;
+  padding: 28px;
+  box-shadow: 0 16px 50px rgba(23, 32, 27, 0.08);
+}
+
+.intro h1,
+.status h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.intro h1 {
+  max-width: 11ch;
+  font-size: 42px;
+  line-height: 1.02;
+}
+
+.status h2 {
+  font-size: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #486657;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.checkout-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+label {
+  display: grid;
+  gap: 7px;
+  color: #33433a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid #c9d2c3;
+  border-radius: 6px;
+  padding: 0 12px;
+  color: #17201b;
+  background: #fbfcfa;
+}
+
+button {
+  min-height: 46px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  background: #116149;
+  color: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.secondary {
+  width: 100%;
+  margin-top: 22px;
+  background: #eef3ea;
+  color: #17201b;
+}
+
+.product-line {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #e4e9df;
+  display: grid;
+  gap: 4px;
+}
+
+.product-line strong {
+  font-size: 28px;
+}
+
+.product-line span,
+.message {
+  color: #5a675f;
+}
+
+.message {
+  margin: 18px 0 0;
+}
+
+.status {
+  display: grid;
+  gap: 18px;
+}
+
+.badge {
+  width: fit-content;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 0 13px;
+  background: #edf0f4;
+  color: #46515e;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.badge.paid {
+  background: #e5f6ec;
+  color: #146b3d;
+}
+
+.badge.failed {
+  background: #fdecec;
+  color: #a92d2d;
+}
+
+dl {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+}
+
+dt {
+  color: #667269;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.spin {
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 780px) {
+  .shell {
+    grid-template-columns: 1fr;
+    padding: 22px 14px;
+  }
+
+  .panel,
+  .status {
+    padding: 20px;
+  }
+
+  .intro h1 {
+    max-width: 100%;
+    font-size: 34px;
+  }
+}

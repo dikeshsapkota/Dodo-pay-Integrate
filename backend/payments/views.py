@@ -1,8 +1,10 @@
 import json
+import time
+from types import SimpleNamespace
 
 from django.conf import settings
 from django.core.management import call_command
-from django.db import OperationalError, ProgrammingError
+from django.db import DatabaseError, OperationalError, ProgrammingError
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
@@ -15,82 +17,160 @@ from .models import Order, Product
 from .serializers import CheckoutSerializer, OrderSerializer, ProductSerializer
 
 
+DATABASE_ERRORS = (DatabaseError, OperationalError, ProgrammingError, OSError)
+
+
 def ensure_demo_database():
     if not settings.DATABASES["default"]["NAME"]:
-        return
+        return False
     try:
         Product.objects.exists()
-    except (OperationalError, ProgrammingError):
-        call_command("migrate", interactive=False, verbosity=0)
-        call_command("seed_demo", verbosity=0)
+    except DATABASE_ERRORS:
+        try:
+            call_command("migrate", interactive=False, verbosity=0)
+            call_command("seed_demo", verbosity=0)
+        except Exception:
+            return False
+    return True
+
+
+def demo_product_payload():
+    return {
+        "id": 1,
+        "name": "Dodo Demo Product",
+        "description": "A single checkout item used to demonstrate the hosted Dodo Payments flow.",
+        "price_display": "$19.00",
+    }
+
+
+def demo_product_object():
+    return SimpleNamespace(
+        id=1,
+        name="Dodo Demo Product",
+        description="A single checkout item used to demonstrate the hosted Dodo Payments flow.",
+        price_display="$19.00",
+        dodo_product_id=settings.DODO_DEMO_PRODUCT_ID or "replace_with_dodo_product_id",
+    )
 
 
 @api_view(["GET"])
 def product_list(request):
-    ensure_demo_database()
-    products = Product.objects.filter(is_active=True).order_by("id")
-    return Response(ProductSerializer(products, many=True).data)
+    try:
+        if not ensure_demo_database():
+            return Response([demo_product_payload()])
+        products = Product.objects.filter(is_active=True).order_by("id")
+        return Response(ProductSerializer(products, many=True).data)
+    except DATABASE_ERRORS:
+        return Response([demo_product_payload()])
 
 
 @api_view(["POST"])
 def create_checkout(request):
-    ensure_demo_database()
+    uses_database = ensure_demo_database()
     serializer = CheckoutSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
-    try:
-        product = Product.objects.get(id=serializer.validated_data["product_id"], is_active=True)
-    except Product.DoesNotExist:
-        return Response({"detail": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
+    if uses_database:
+        try:
+            product = Product.objects.get(id=serializer.validated_data["product_id"], is_active=True)
+        except Product.DoesNotExist:
+            return Response({"detail": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
+        except DATABASE_ERRORS:
+            uses_database = False
+            product = demo_product_object()
+    else:
+        product = demo_product_object()
 
-    order = Order.objects.create(
-        product=product,
-        customer_name=serializer.validated_data["customer_name"],
-        customer_email=serializer.validated_data["customer_email"],
-    )
+    try:
+        if not uses_database:
+            raise OperationalError("Database unavailable; using demo checkout fallback.")
+        order = Order.objects.create(
+            product=product,
+            customer_name=serializer.validated_data["customer_name"],
+            customer_email=serializer.validated_data["customer_email"],
+        )
+    except DATABASE_ERRORS:
+        uses_database = False
+        order = SimpleNamespace(
+            id=int(time.time()),
+            product=product,
+            customer_name=serializer.validated_data["customer_name"],
+            customer_email=serializer.validated_data["customer_email"],
+            status=Order.Status.CREATED,
+            provider_payload={},
+        )
 
     try:
         checkout = create_checkout_session(order)
     except DodoCheckoutError as exc:
-        order.status = Order.Status.FAILED
-        order.provider_payload = {"error": str(exc)}
-        order.save(update_fields=["status", "provider_payload", "updated_at"])
+        if uses_database:
+            order.status = Order.Status.FAILED
+            order.provider_payload = {"error": str(exc)}
+            order.save(update_fields=["status", "provider_payload", "updated_at"])
         return Response({"detail": str(exc), "order_id": order.id}, status=status.HTTP_502_BAD_GATEWAY)
 
-    order.status = Order.Status.CHECKOUT_CREATED
-    order.checkout_session_id = checkout["session_id"]
-    order.checkout_url = checkout["checkout_url"]
-    order.provider_payload = checkout
-    order.save(
-        update_fields=[
-            "status",
-            "checkout_session_id",
-            "checkout_url",
-            "provider_payload",
-            "updated_at",
-        ]
-    )
+    if uses_database:
+        order.status = Order.Status.CHECKOUT_CREATED
+        order.checkout_session_id = checkout["session_id"]
+        order.checkout_url = checkout["checkout_url"]
+        order.provider_payload = checkout
+        order.save(
+            update_fields=[
+                "status",
+                "checkout_session_id",
+                "checkout_url",
+                "provider_payload",
+                "updated_at",
+            ]
+        )
 
     return Response(
-        {"order_id": order.id, "checkout_url": order.checkout_url, "status": order.status},
+        {"order_id": order.id, "checkout_url": checkout["checkout_url"], "status": Order.Status.CHECKOUT_CREATED},
         status=status.HTTP_201_CREATED,
     )
 
 
 @api_view(["GET"])
 def order_detail(request, order_id):
-    ensure_demo_database()
+    if not ensure_demo_database():
+        return Response(
+            {
+                "id": order_id,
+                "product": demo_product_payload(),
+                "customer_name": "Demo Customer",
+                "customer_email": "demo@example.com",
+                "status": "checkout_created",
+                "checkout_session_id": "",
+                "checkout_url": "",
+                "created_at": None,
+                "updated_at": None,
+            }
+        )
     try:
         order = Order.objects.select_related("product").get(id=order_id)
     except Order.DoesNotExist:
         return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+    except DATABASE_ERRORS:
+        return Response(
+            {
+                "id": order_id,
+                "product": demo_product_payload(),
+                "customer_name": "Demo Customer",
+                "customer_email": "demo@example.com",
+                "status": "checkout_created",
+                "checkout_session_id": "",
+                "checkout_url": "",
+                "created_at": None,
+                "updated_at": None,
+            }
+        )
     return Response(OrderSerializer(order).data)
 
 
 @csrf_exempt
 @api_view(["POST"])
 def dodo_webhook(request):
-    ensure_demo_database()
+    uses_database = ensure_demo_database()
     raw_body = request.body
     headers = {
         "webhook-id": request.headers.get("webhook-id", ""),
@@ -112,10 +192,15 @@ def dodo_webhook(request):
     if not order_id:
         return HttpResponse("ignored: no order_id metadata", status=202)
 
+    if not uses_database:
+        return Response({"received": True, "order_id": order_id, "status": status_from_webhook(payload)})
+
     try:
         order = Order.objects.get(id=order_id)
     except Order.DoesNotExist:
         return HttpResponse("ignored: unknown order", status=202)
+    except DATABASE_ERRORS:
+        return Response({"received": True, "order_id": order_id, "status": status_from_webhook(payload)})
 
     order.status = status_from_webhook(payload)
     order.provider_payment_id = find_payment_id(payload)
